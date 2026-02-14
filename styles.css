@@ -6,8 +6,8 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
-    color: #ffffff;
+    background: #fafafa;
+    color: #1a1a1a;
     overflow: hidden;
     height: 100vh;
 }
@@ -19,53 +19,50 @@ body {
 }
 
 .menu {
-    padding: 40px;
+    padding: 24px;
     height: 100vh;
     overflow-y: auto;
 }
 
 .menu h1 {
     text-align: center;
-    font-size: 3rem;
-    margin-bottom: 40px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-size: 2rem;
+    font-weight: 600;
+    margin-bottom: 32px;
+    color: #1a1a1a;
+    letter-spacing: -0.02em;
 }
 
 .menu-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 30px;
-    max-width: 1400px;
+    gap: 20px;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
 .menu-item {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 20px;
-    padding: 20px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid #e8e8e8;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 15px;
+    gap: 12px;
 }
 
 .menu-item:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    border-color: rgba(255, 255, 255, 0.2);
+    border-color: #ccc;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
 .menu-preview {
     width: 100%;
     height: 200px;
-    border-radius: 15px;
-    background: #000;
+    border-radius: 8px;
+    background: #f0f0f0;
     overflow: hidden;
     position: relative;
 }
@@ -77,31 +74,31 @@ body {
 }
 
 .menu-item h2 {
-    font-size: 1.5rem;
-    font-weight: 600;
+    font-size: 1.1rem;
+    font-weight: 500;
     text-align: center;
+    color: #333;
 }
 
 .fullscreen-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #1a1a1a;
     border: none;
-    color: white;
-    padding: 12px 30px;
-    border-radius: 25px;
-    font-size: 1rem;
-    font-weight: 600;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
     cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: background 0.2s ease, opacity 0.2s ease;
     width: 100%;
 }
 
 .fullscreen-btn:hover {
-    transform: scale(1.05);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    background: #333;
 }
 
 .fullscreen-btn:active {
-    transform: scale(0.98);
+    opacity: 0.9;
 }
 
 .visual-container {
@@ -164,22 +161,20 @@ body {
     pointer-events: all;
 }
 
-/* Scrollbar styling */
 .menu::-webkit-scrollbar {
-    width: 10px;
+    width: 8px;
 }
 
 .menu::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
+    background: #f0f0f0;
 }
 
 .menu::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
+    background: #ccc;
+    border-radius: 4px;
 }
 
 .menu::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: #aaa;
 }
 
