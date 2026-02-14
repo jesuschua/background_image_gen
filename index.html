@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Screensaver</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <div id="menu" class="menu">
+            <h1>Visual Screensaver</h1>
+            <div class="menu-grid">
+                <div class="menu-item" data-visual="mosaic">
+                    <div class="menu-preview" id="preview-mosaic"></div>
+                    <h2>Mosaic</h2>
+                    <button class="fullscreen-btn">Full Screen</button>
+                </div>
+                <div class="menu-item" data-visual="smoke">
+                    <div class="menu-preview" id="preview-smoke"></div>
+                    <h2>Smoke</h2>
+                    <button class="fullscreen-btn">Full Screen</button>
+                </div>
+                <div class="menu-item" data-visual="lightshade">
+                    <div class="menu-preview" id="preview-lightshade"></div>
+                    <h2>Light and Shade</h2>
+                    <button class="fullscreen-btn">Full Screen</button>
+                </div>
+                <div class="menu-item" data-visual="lanterns">
+                    <div class="menu-preview" id="preview-lanterns"></div>
+                    <h2>Lanterns</h2>
+                    <button class="fullscreen-btn">Full Screen</button>
+                </div>
+                <div class="menu-item" data-visual="sunset">
+                    <div class="menu-preview" id="preview-sunset"></div>
+                    <h2>Sunset</h2>
+                    <button class="fullscreen-btn">Full Screen</button>
+                </div>
+                <div class="menu-item" data-visual="bloom">
+                    <div class="menu-preview" id="preview-bloom"></div>
+                    <h2>Bloom</h2>
+                    <button class="fullscreen-btn">Full Screen</button>
+                </div>
+                <div class="menu-item" data-visual="urbanity">
+                    <div class="menu-preview" id="preview-urbanity"></div>
+                    <h2>Urbanity</h2>
+                    <button class="fullscreen-btn">Full Screen</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="visual-container" class="visual-container hidden">
+            <canvas id="visual-canvas"></canvas>
+            <button id="exit-fullscreen" class="exit-btn">Exit (ESC)</button>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
+
