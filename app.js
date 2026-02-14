@@ -97,7 +97,8 @@ class VisualScreensaver {
             lanterns: LanternsVisual,
             sunset: SunsetVisual,
             bloom: BloomVisual,
-            urbanity: UrbanityVisual
+            urbanity: UrbanityVisual,
+            streets: StreetsVisual
         };
         return visuals[type] || MosaicVisual;
     }
@@ -133,7 +134,7 @@ class VisualScreensaver {
     }
     
     initPreviews() {
-        const types = ['mosaic', 'smoke', 'lightshade', 'lanterns', 'sunset', 'bloom', 'urbanity'];
+        const types = ['mosaic', 'smoke', 'lightshade', 'lanterns', 'sunset', 'bloom', 'urbanity', 'streets'];
         const fullW = Math.min(window.innerWidth, 1920);
         const fullH = Math.min(window.innerHeight, 1080);
         document.documentElement.style.setProperty('--preview-aspect', `${fullW} / ${fullH}`);
@@ -884,6 +885,231 @@ class BloomVisual extends BaseVisual {
         super.resize(width, height);
         this.blooms = [];
         this.initBlooms();
+    }
+}
+
+// Streets Visual — warm line-art street: sidewalks, establishments (shop fronts, awnings), road, gate, cars
+class StreetsVisual extends BaseVisual {
+    constructor(canvas, ctx) {
+        super(canvas, ctx);
+        this.cars = [];
+        this.initCars();
+    }
+    
+    initCars() {
+        for (let i = 0; i < 5; i++) {
+            this.cars.push({
+                depth: 0.15 + (i / 5) * 0.7,
+                phase: (i / 5) * 2,
+                rightward: i % 2 === 0
+            });
+        }
+    }
+    
+    update() {
+        super.update();
+        const speed = 0.00045;
+        this.cars.forEach(c => {
+            c.phase += c.rightward ? speed : -speed;
+            if (c.phase > 2) c.phase -= 2;
+            if (c.phase < 0) c.phase += 2;
+        });
+    }
+    
+    render() {
+        const w = this.width;
+        const h = this.height;
+        const vpX = w * 0.5;
+        const vpY = h * 0.32;
+        const horizon = vpY + 30;
+        
+        const yToT = (y) => Math.min(1, Math.max(0, (y - vpY) / (h - vpY)));
+        const project = (xNorm, y) => vpX + (xNorm * w - vpX) * yToT(y);
+        
+        const roadLeft = 0.22;
+        const roadRight = 0.78;
+        const sidewalkLeft = 0.08;
+        const sidewalkRight = 0.92;
+        const roadY1 = h;
+        
+        this.ctx.fillStyle = '#f8f6f2';
+        this.ctx.fillRect(0, 0, w, h);
+        
+        this.ctx.strokeStyle = '#1a1a1a';
+        this.ctx.lineWidth = 1.4;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        
+        this.ctx.fillStyle = 'rgba(232, 228, 220, 0.6)';
+        this.ctx.beginPath();
+        this.ctx.moveTo(project(0, roadY1), roadY1);
+        this.ctx.lineTo(project(0, 0), 0);
+        this.ctx.lineTo(project(sidewalkLeft, 0), 0);
+        this.ctx.lineTo(project(roadLeft, horizon), horizon);
+        this.ctx.lineTo(project(roadLeft, roadY1), roadY1);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.beginPath();
+        this.ctx.moveTo(project(roadRight, roadY1), roadY1);
+        this.ctx.lineTo(project(roadRight, horizon), horizon);
+        this.ctx.lineTo(project(sidewalkRight, 0), 0);
+        this.ctx.lineTo(w, 0);
+        this.ctx.lineTo(project(1, roadY1), roadY1);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(project(roadLeft, roadY1), roadY1);
+        this.ctx.lineTo(project(roadLeft, horizon), horizon);
+        this.ctx.lineTo(vpX, vpY);
+        this.ctx.lineTo(project(roadRight, horizon), horizon);
+        this.ctx.lineTo(project(roadRight, roadY1), roadY1);
+        this.ctx.closePath();
+        this.ctx.stroke();
+        this.ctx.fillStyle = 'rgba(228, 222, 212, 0.5)';
+        this.ctx.fill();
+        this.ctx.stroke();
+        
+        for (let y = roadY1 - 30; y > horizon; y -= 40) {
+            const t = yToT(y);
+            const segW = 16 * (1 - t * 0.75);
+            const cx = project(0.5, y);
+            this.ctx.strokeStyle = '#8a8478';
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(cx - segW / 2, y - 3, segW, 6);
+            this.ctx.strokeStyle = '#1a1a1a';
+            this.ctx.lineWidth = 1.4;
+        }
+        
+        const drawEstablishment = (xStart, widthNorm, topNorm, floors, hasAwning, hasDoor) => {
+            const x0 = xStart;
+            const x1 = xStart + widthNorm;
+            const y0 = 0;
+            const y1 = h * (1 - topNorm);
+            const groundY = y1 + (y0 - y1) * 0.22;
+            this.ctx.fillStyle = 'rgba(240, 236, 228, 0.7)';
+            this.ctx.beginPath();
+            this.ctx.moveTo(project(x0, y1), y1);
+            this.ctx.lineTo(project(x0, y0), y0);
+            this.ctx.lineTo(project(x1, y0), y0);
+            this.ctx.lineTo(project(x1, y1), y1);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.stroke();
+            if (hasAwning) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(project(x0, groundY), groundY);
+                this.ctx.lineTo(project(x0, groundY - 18), groundY - 18);
+                this.ctx.lineTo(project(x1, groundY - 18), groundY - 18);
+                this.ctx.lineTo(project(x1, groundY), groundY);
+                this.ctx.closePath();
+                this.ctx.stroke();
+            }
+            if (hasDoor) {
+                const dx = (x0 + x1) / 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(project(dx - 0.008, groundY), groundY);
+                this.ctx.lineTo(project(dx - 0.008, y1), y1);
+                this.ctx.lineTo(project(dx + 0.008, y1), y1);
+                this.ctx.lineTo(project(dx + 0.008, groundY), groundY);
+                this.ctx.closePath();
+                this.ctx.stroke();
+            }
+            for (let f = 1; f < floors; f++) {
+                const fy = y1 + (y0 - y1) * (f / floors);
+                this.ctx.beginPath();
+                this.ctx.moveTo(project(x0, fy), fy);
+                this.ctx.lineTo(project(x1, fy), fy);
+                this.ctx.stroke();
+            }
+            const cols = 3;
+            for (let c = 1; c < cols; c++) {
+                const xNorm = x0 + (x1 - x0) * (c / cols);
+                this.ctx.beginPath();
+                this.ctx.moveTo(project(xNorm, y0), y0);
+                this.ctx.lineTo(project(xNorm, y1), y1);
+                this.ctx.stroke();
+            }
+            for (let f = 1; f < floors; f++) {
+                for (let c = 0; c < cols; c++) {
+                    const fx = x0 + (x1 - x0) * (c + 0.5) / cols;
+                    const fy = y1 + (y0 - y1) * (f + 0.5) / floors;
+                    const wx = (project(fx + 0.012, fy) - project(fx - 0.012, fy)) * 0.9;
+                    const wy = 8;
+                    this.ctx.strokeRect(project(fx, fy) - wx / 2, fy - wy / 2, Math.abs(wx), wy);
+                }
+            }
+        };
+        drawEstablishment(0, 0.07, 0.68, 5, true, true);
+        drawEstablishment(0.07, 0.08, 0.52, 6, true, false);
+        drawEstablishment(0.15, 0.05, 0.72, 4, false, true);
+        drawEstablishment(0.88, 0.06, 0.62, 5, true, true);
+        drawEstablishment(0.94, 0.06, 0.48, 6, true, false);
+        
+        const gateY = h * 0.48;
+        const gateH = h * 0.2;
+        const gateW = w * 0.45;
+        const gx = vpX - gateW / 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(gx, gateY + gateH);
+        this.ctx.lineTo(gx + gateW * 0.1, gateY + gateH * 0.4);
+        this.ctx.lineTo(gx + gateW * 0.5, gateY + gateH * 0.02);
+        this.ctx.lineTo(gx + gateW * 0.9, gateY + gateH * 0.4);
+        this.ctx.lineTo(gx + gateW, gateY + gateH);
+        this.ctx.stroke();
+        this.ctx.beginPath();
+        this.ctx.moveTo(gx + gateW * 0.5, gateY + gateH * 0.02);
+        this.ctx.lineTo(gx + gateW * 0.5, gateY + gateH);
+        this.ctx.stroke();
+        this.ctx.beginPath();
+        this.ctx.arc(gx + gateW * 0.5, gateY + gateH * 0.52, gateW * 0.06, 0, Math.PI * 2);
+        this.ctx.stroke();
+        [[0.04, 0.08], [0.18, 0.12], [0.35, 0.15]].forEach(([ty, th]) => {
+            this.ctx.beginPath();
+            this.ctx.moveTo(gx + gateW * 0.1, gateY + gateH * ty);
+            this.ctx.quadraticCurveTo(gx + gateW * 0.5, gateY + gateH * (ty - 0.03), gx + gateW * 0.9, gateY + gateH * ty);
+            this.ctx.lineTo(gx + gateW * 0.9, gateY + gateH * (ty + th));
+            this.ctx.quadraticCurveTo(gx + gateW * 0.5, gateY + gateH * (ty + th + 0.015), gx + gateW * 0.1, gateY + gateH * (ty + th));
+            this.ctx.closePath();
+            this.ctx.stroke();
+        });
+        this.ctx.strokeRect(gx + gateW * 0.2, gateY - 20, gateW * 0.6, gateH * 0.5);
+        for (let r = 1; r < 3; r++) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(gx + gateW * 0.2, gateY - 20 + (gateH * 0.5 * r) / 3);
+            this.ctx.lineTo(gx + gateW * 0.8, gateY - 20 + (gateH * 0.5 * r) / 3);
+            this.ctx.stroke();
+        }
+        for (let c = 1; c < 4; c++) {
+            const cx = gx + gateW * 0.2 + (gateW * 0.6 * c) / 4;
+            this.ctx.beginPath();
+            this.ctx.moveTo(cx, gateY - 20);
+            this.ctx.lineTo(cx, gateY - 20 + gateH * 0.5);
+            this.ctx.stroke();
+        }
+        
+        this.cars.forEach(car => {
+            const t = car.depth;
+            const y = vpY + (h - vpY) * t;
+            const scale = 1 - t * 0.88;
+            const carW = 72 * scale;
+            const carH = 28 * scale;
+            const xNorm = roadLeft + (roadRight - roadLeft) * (0.15 + car.phase * 0.7);
+            const x = project(xNorm, y) - carW / 2;
+            this.ctx.strokeRect(x, y - carH, carW, carH);
+            this.ctx.beginPath();
+            this.ctx.moveTo(x + carW * 0.22, y - carH);
+            this.ctx.lineTo(x + carW * 0.22, y);
+            this.ctx.moveTo(x + carW * 0.78, y - carH);
+            this.ctx.lineTo(x + carW * 0.78, y);
+            this.ctx.stroke();
+        });
+    }
+    
+    resize(width, height) {
+        super.resize(width, height);
     }
 }
 
