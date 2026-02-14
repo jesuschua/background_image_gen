@@ -727,13 +727,15 @@ class BloomVisual extends BaseVisual {
             if (nx < 0.38) hue = 200 + (nx / 0.38) * 20 + (Math.random() - 0.5) * 8;
             else if (nx < 0.62) hue = 130 + ((nx - 0.38) / 0.24) * 30 + (Math.random() - 0.5) * 10;
             else hue = 28 + ((nx - 0.62) / 0.38) * 22 + (Math.random() - 0.5) * 8;
+            const r0 = Math.random() * Math.PI * 2;
             this.blooms.push({
                 x, y,
                 hue: (hue + 360) % 360,
                 sat: 90 + Math.random() * 10,
                 size: baseSize * (sizeScales[i] + (Math.random() - 0.5) * 0.12),
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: 0.0028 + (Math.random() - 0.5) * 0.0018,
+                rotation: r0,
+                rotationLag: r0,
+                rotationSpeed: 0.001 + (Math.random() - 0.5) * 0.0006,
                 swayPhase: Math.random() * Math.PI * 2,
                 swayTilt: 0,
                 petalPhase: [],
@@ -749,10 +751,15 @@ class BloomVisual extends BaseVisual {
     update() {
         super.update();
         const t = this.time;
+        const lagFactor = 0.014;
         this.blooms.forEach(b => {
             b.rotation += b.rotationSpeed;
+            let d = b.rotation - b.rotationLag;
+            while (d > Math.PI) d -= Math.PI * 2;
+            while (d < -Math.PI) d += Math.PI * 2;
+            b.rotationLag += d * lagFactor;
             b.swayTilt = 0.06 * Math.sin(t * 0.35 + b.swayPhase) + 0.03 * Math.sin(t * 0.5 + b.swayPhase * 0.7);
-            b.petalPhase.forEach((_, i) => { b.petalPhase[i] += 0.008 + (i % 3) * 0.004; });
+            b.petalPhase.forEach((_, i) => { b.petalPhase[i] += 0.006 + (i % 3) * 0.003; });
         });
     }
     
@@ -766,7 +773,7 @@ class BloomVisual extends BaseVisual {
         
         for (let i = 0; i < n; i++) {
             const baseAngle = (Math.PI * 2 / n) * i + (isInner ? Math.PI / n : 0);
-            const flutter = 0.025 * Math.sin(t + bloom.petalPhase[phaseOffset + i]);
+            const flutter = 0.042 * Math.sin(t + bloom.petalPhase[phaseOffset + i]);
             const angle = baseAngle + flutter;
             const lenScale = 0.95 + (i % 2) * 0.08;
             const wScale = 0.92 + (i % 3) * 0.06;
@@ -853,8 +860,13 @@ class BloomVisual extends BaseVisual {
             this.ctx.arc(0, 0, size * 1.35, 0, Math.PI * 2);
             this.ctx.fill();
             
+            let petalLag = bloom.rotationLag - bloom.rotation;
+            while (petalLag > Math.PI) petalLag -= Math.PI * 2;
+            while (petalLag < -Math.PI) petalLag += Math.PI * 2;
+            this.ctx.rotate(petalLag);
             this.drawPetalLayer(this.ctx, size, hue, 6, true, t, bloom, strokeW * 0.85);
             this.drawPetalLayer(this.ctx, size, hue, 10, false, t, bloom, strokeW);
+            this.ctx.rotate(-petalLag);
             
             const centerR = size * 0.16;
             const centerGrad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, centerR);
