@@ -628,14 +628,15 @@ class LanternsVisual extends BaseVisual {
     }
 }
 
-// Sunset Visual
+// Sunset Visual — zoomed-out view (smaller sun/clouds)
 class SunsetVisual extends BaseVisual {
     constructor(canvas, ctx) {
         super(canvas, ctx);
+        this.zoomOut = 0.58;
     }
     
     render() {
-        const s = this.scale;
+        const s = this.scale * this.zoomOut;
         const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.height);
         const sunY = this.height * 0.3 + Math.sin(this.time * 0.1) * 50 * s;
         const sunX = this.width * 0.5;
@@ -654,7 +655,8 @@ class SunsetVisual extends BaseVisual {
         const sunGradient = this.ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunGlowR);
         sunGradient.addColorStop(0, '#fff8dc');
         sunGradient.addColorStop(0.5, '#ffd700');
-        sunGradient.addColorStop(1, 'transparent');
+        sunGradient.addColorStop(0.85, 'rgba(255, 220, 180, 0.25)');
+        sunGradient.addColorStop(1, 'rgba(255, 235, 210, 0)');
         
         this.ctx.fillStyle = sunGradient;
         this.ctx.beginPath();
@@ -666,18 +668,35 @@ class SunsetVisual extends BaseVisual {
         this.ctx.arc(sunX, sunY, sunDiskR, 0, Math.PI * 2);
         this.ctx.fill();
         
-        const cloudCount = Math.min(9, Math.max(5, Math.floor(5 * s)));
-        for (let i = 0; i < cloudCount; i++) {
-            const cloudX = (this.time * 10 * s + i * 300 * s) % (this.width + 200 * s) - 100 * s;
-            const cloudY = this.height * 0.4 + i * 50 * s;
-            const cloudOpacity = 0.3 + Math.sin(this.time + i) * 0.1;
-            const r1 = 40 * s, r2 = 50 * s, r3 = 40 * s;
-            this.ctx.fillStyle = `rgba(255, 200, 150, ${cloudOpacity})`;
-            this.ctx.beginPath();
-            this.ctx.arc(cloudX, cloudY, r1, 0, Math.PI * 2);
-            this.ctx.arc(cloudX + 50 * s, cloudY, r2, 0, Math.PI * 2);
-            this.ctx.arc(cloudX + 100 * s, cloudY, r3, 0, Math.PI * 2);
-            this.ctx.fill();
+        this.drawClouds(s);
+    }
+    
+    drawClouds(s) {
+        const seed = 12345;
+        const hash = (n) => ((n * 92837111) ^ (n >>> 15)) >>> 0;
+        const clouds = 5;
+        for (let i = 0; i < clouds; i++) {
+            const t = this.time * 0.08 * s;
+            const baseX = (t * 120 + (hash(i + seed + 1) % 1000)) % (this.width + 400) - 200;
+            const baseY = this.height * (0.35 + (hash(i + seed + 2) % 40) / 400) + Math.sin(this.time * 0.05 + i) * 8 * s;
+            const blobCount = 4 + (hash(i + seed + 3) % 3);
+            const opacity = 0.2 + (hash(i + seed + 4) % 18) / 100;
+            this.ctx.save();
+            for (let b = 0; b < blobCount; b++) {
+                const bx = baseX + ((hash(i * 7 + b + seed) % 200) - 100) * 0.5 * s;
+                const by = baseY + ((hash(i * 7 + b + seed + 1) % 80) - 40) * 0.7 * s;
+                const br = (22 + (hash(i * 7 + b + seed + 2) % 32)) * s;
+                const g = this.ctx.createRadialGradient(bx, by, 0, bx, by, br);
+                g.addColorStop(0, `rgba(255, 248, 242, ${opacity * 0.9})`);
+                g.addColorStop(0.45, `rgba(255, 238, 225, ${opacity * 0.5})`);
+                g.addColorStop(0.8, `rgba(255, 230, 215, ${opacity * 0.2})`);
+                g.addColorStop(1, 'rgba(255, 235, 220, 0)');
+                this.ctx.fillStyle = g;
+                this.ctx.beginPath();
+                this.ctx.arc(bx, by, br, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+            this.ctx.restore();
         }
     }
 }
