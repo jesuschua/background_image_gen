@@ -134,22 +134,33 @@ class VisualScreensaver {
     
     initPreviews() {
         const types = ['mosaic', 'smoke', 'lightshade', 'lanterns', 'sunset', 'bloom', 'urbanity'];
+        const fullW = Math.min(window.innerWidth, 1920);
+        const fullH = Math.min(window.innerHeight, 1080);
+        document.documentElement.style.setProperty('--preview-aspect', `${fullW} / ${fullH}`);
+        const previewW = 280;
+        const previewH = Math.round(previewW * fullH / fullW);
         types.forEach(type => {
             const preview = document.getElementById(`preview-${type}`);
-            const canvas = document.createElement('canvas');
-            canvas.width = 280;
-            canvas.height = 200;
-            const ctx = canvas.getContext('2d');
-            preview.appendChild(canvas);
+            const visibleCanvas = document.createElement('canvas');
+            visibleCanvas.width = previewW;
+            visibleCanvas.height = previewH;
+            preview.appendChild(visibleCanvas);
+            const visibleCtx = visibleCanvas.getContext('2d');
+            
+            const offscreen = document.createElement('canvas');
+            offscreen.width = fullW;
+            offscreen.height = fullH;
+            const offscreenCtx = offscreen.getContext('2d');
             
             const VisualClass = this.getVisualClass(type);
-            const visual = new VisualClass(canvas, ctx);
+            const visual = new VisualClass(offscreen, offscreenCtx);
             
             let lastTime = 0;
             const previewAnimate = (time) => {
-                if (time - lastTime > 16) { // ~60fps
+                if (time - lastTime > 16) {
                     visual.update();
                     visual.render();
+                    visibleCtx.drawImage(offscreen, 0, 0, fullW, fullH, 0, 0, previewW, previewH);
                     lastTime = time;
                 }
                 requestAnimationFrame(previewAnimate);
@@ -671,72 +682,180 @@ class SunsetVisual extends BaseVisual {
     }
 }
 
-// Bloom Visual
+// Bloom Visual — reference style: layered petals, soft diffusion, sharp white outlines, mandala-like detail
 class BloomVisual extends BaseVisual {
     constructor(canvas, ctx) {
         super(canvas, ctx);
-        this.flowers = [];
-        this.initFlowers();
+        this.blooms = [];
+        this.initBlooms();
     }
     
-    initFlowers() {
+    initBlooms() {
         const s = this.scale;
-        const count = Math.min(22, Math.max(8, Math.floor(8 * s)));
+        const w = this.width;
+        const h = this.height;
+        const count = 3;
+        const minSide = Math.min(w, h);
+        const baseSize = minSide * 0.3 * s;
+        const sizeScales = [0.72, 1.15, 0.88];
         for (let i = 0; i < count; i++) {
-            this.flowers.push({
-                x: Math.random() * this.width,
-                y: Math.random() * this.height,
-                petals: 5 + Math.floor(Math.random() * 4),
-                size: (40 + Math.random() * 60) * s,
+            const tx = count > 1 ? i / (count - 1) : 0.5;
+            const x = w * (0.18 + tx * 0.64);
+            const y = h * 0.5 + (Math.random() - 0.5) * h * 0.08;
+            const nx = x / w;
+            let hue;
+            if (nx < 0.38) hue = 200 + (nx / 0.38) * 20 + (Math.random() - 0.5) * 8;
+            else if (nx < 0.62) hue = 130 + ((nx - 0.38) / 0.24) * 30 + (Math.random() - 0.5) * 10;
+            else hue = 28 + ((nx - 0.62) / 0.38) * 22 + (Math.random() - 0.5) * 8;
+            this.blooms.push({
+                x, y,
+                hue: (hue + 360) % 360,
+                sat: 90 + Math.random() * 10,
+                size: baseSize * (sizeScales[i] + (Math.random() - 0.5) * 0.12),
                 rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.02,
-                hue: Math.random() * 360,
-                pulse: Math.random() * Math.PI * 2
+                rotationSpeed: 0.0028 + (Math.random() - 0.5) * 0.0018,
+                swayPhase: Math.random() * Math.PI * 2,
+                swayTilt: 0,
+                petalPhase: [],
+                translucent: Math.random() < 0.5
             });
         }
+        this.blooms.forEach(b => {
+            const totalPetals = 6 + 10;
+            for (let i = 0; i < totalPetals; i++) b.petalPhase.push(Math.random() * Math.PI * 2);
+        });
     }
     
     update() {
         super.update();
-        this.flowers.forEach(flower => {
-            flower.rotation += flower.rotationSpeed;
-            flower.pulse += 0.05;
+        const t = this.time;
+        this.blooms.forEach(b => {
+            b.rotation += b.rotationSpeed;
+            b.swayTilt = 0.06 * Math.sin(t * 0.35 + b.swayPhase) + 0.03 * Math.sin(t * 0.5 + b.swayPhase * 0.7);
+            b.petalPhase.forEach((_, i) => { b.petalPhase[i] += 0.008 + (i % 3) * 0.004; });
         });
     }
     
-    render() {
-        this.ctx.fillStyle = '#0a0a1a';
-        this.ctx.fillRect(0, 0, this.width, this.height);
+    drawPetalLayer(ctx, size, hue, n, inner, t, bloom, strokeW) {
+        const isInner = inner;
+        const sat = bloom.sat != null ? bloom.sat : 78;
+        const len = size * (isInner ? 0.32 : 0.52);
+        const halfW = size * (isInner ? 0.12 : 0.22);
+        const alpha = bloom.translucent ? (isInner ? 0.5 : 0.45) : (isInner ? 0.78 : 0.72);
+        const phaseOffset = isInner ? 0 : 6;
         
-        this.flowers.forEach(flower => {
-            const scale = 1 + Math.sin(flower.pulse) * 0.2;
-            const currentSize = flower.size * scale;
+        for (let i = 0; i < n; i++) {
+            const baseAngle = (Math.PI * 2 / n) * i + (isInner ? Math.PI / n : 0);
+            const flutter = 0.025 * Math.sin(t + bloom.petalPhase[phaseOffset + i]);
+            const angle = baseAngle + flutter;
+            const lenScale = 0.95 + (i % 2) * 0.08;
+            const wScale = 0.92 + (i % 3) * 0.06;
+            const pl = len * lenScale;
+            const pw = halfW * wScale;
+            
+            const tipX = Math.cos(angle) * pl;
+            const tipY = Math.sin(angle) * pl;
+            const cpx = Math.cos(angle) * pl * 0.45 + Math.cos(angle + Math.PI / 2) * pw;
+            const cpy = Math.sin(angle) * pl * 0.45 + Math.sin(angle + Math.PI / 2) * pw;
+            const cpx2 = Math.cos(angle) * pl * 0.45 - Math.cos(angle + Math.PI / 2) * pw;
+            const cpy2 = Math.sin(angle) * pl * 0.45 - Math.sin(angle + Math.PI / 2) * pw;
+            
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(cpx, cpy, tipX, tipY);
+            ctx.quadraticCurveTo(cpx2, cpy2, 0, 0);
+            ctx.closePath();
+            
+            const grad = ctx.createLinearGradient(0, 0, tipX, tipY);
+            grad.addColorStop(0, `hsla(${hue}, ${sat}%, 58%, ${alpha})`);
+            grad.addColorStop(0.35, `hsla(${hue}, ${sat}%, 65%, ${alpha * 0.92})`);
+            grad.addColorStop(0.7, `hsla(${hue}, ${sat}%, 72%, ${alpha * 0.7})`);
+            grad.addColorStop(1, `hsla(${hue}, ${Math.min(95, sat + 8)}%, 82%, ${alpha * 0.28})`);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.82)';
+            ctx.lineWidth = strokeW;
+            ctx.stroke();
+            
+            const midX = Math.cos(angle) * pl * 0.5;
+            const midY = Math.sin(angle) * pl * 0.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.lineWidth = Math.max(0.5, size * 0.004);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(midX, midY);
+            ctx.stroke();
+        }
+    }
+    
+    render() {
+        const w = this.width;
+        const h = this.height;
+        const t = this.time;
+        
+        const bg = this.ctx.createLinearGradient(0, 0, w, 0);
+        bg.addColorStop(0, '#f8f6f2');
+        bg.addColorStop(0.3, '#faf8f5');
+        bg.addColorStop(0.5, '#fbf9f6');
+        bg.addColorStop(0.7, '#faf7f3');
+        bg.addColorStop(1, '#f9f5ef');
+        this.ctx.fillStyle = bg;
+        this.ctx.fillRect(0, 0, w, h);
+        
+        for (let i = 0; i < 18; i++) {
+            const gx = (i * 137) % w;
+            const gy = (i * 89) % h;
+            const spot = this.ctx.createRadialGradient(gx, gy, 0, gx, gy, 100);
+            spot.addColorStop(0, 'rgba(255, 252, 248, 0.12)');
+            spot.addColorStop(1, 'transparent');
+            this.ctx.fillStyle = spot;
+            this.ctx.fillRect(gx - 100, gy - 100, 200, 200);
+        }
+        
+        this.blooms.forEach(bloom => {
+            const size = bloom.size;
+            const hue = bloom.hue;
+            const sat = bloom.sat != null ? bloom.sat : 78;
+            const strokeW = Math.max(1, size * 0.014);
             
             this.ctx.save();
-            this.ctx.translate(flower.x, flower.y);
-            this.ctx.rotate(flower.rotation);
+            this.ctx.translate(bloom.x, bloom.y);
+            this.ctx.rotate(bloom.rotation);
+            this.ctx.rotate(bloom.swayTilt);
             
-            // Draw petals
-            for (let i = 0; i < flower.petals; i++) {
-                const angle = (Math.PI * 2 / flower.petals) * i;
-                const petalX = Math.cos(angle) * currentSize * 0.6;
-                const petalY = Math.sin(angle) * currentSize * 0.6;
-                
-                const petalGradient = this.ctx.createRadialGradient(petalX, petalY, 0, petalX, petalY, currentSize * 0.4);
-                petalGradient.addColorStop(0, `hsla(${flower.hue}, 80%, 70%, 0.9)`);
-                petalGradient.addColorStop(1, `hsla(${flower.hue}, 60%, 50%, 0.3)`);
-                
-                this.ctx.fillStyle = petalGradient;
-                this.ctx.beginPath();
-                this.ctx.ellipse(petalX, petalY, currentSize * 0.3, currentSize * 0.5, angle, 0, Math.PI * 2);
-                this.ctx.fill();
-            }
-            
-            // Center
-            this.ctx.fillStyle = `hsl(${flower.hue + 30}, 70%, 50%)`;
+            const glow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.4);
+            glow.addColorStop(0, `hsla(${hue}, ${sat}%, 75%, 0.18)`);
+            glow.addColorStop(0.6, `hsla(${hue}, ${sat}%, 70%, 0.06)`);
+            glow.addColorStop(1, 'transparent');
+            this.ctx.fillStyle = glow;
             this.ctx.beginPath();
-            this.ctx.arc(0, 0, currentSize * 0.15, 0, Math.PI * 2);
+            this.ctx.arc(0, 0, size * 1.35, 0, Math.PI * 2);
             this.ctx.fill();
+            
+            this.drawPetalLayer(this.ctx, size, hue, 6, true, t, bloom, strokeW * 0.85);
+            this.drawPetalLayer(this.ctx, size, hue, 10, false, t, bloom, strokeW);
+            
+            const centerR = size * 0.16;
+            const centerGrad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, centerR);
+            centerGrad.addColorStop(0, `hsl(${hue}, ${sat}%, 36%)`);
+            centerGrad.addColorStop(0.7, `hsl(${hue}, ${sat}%, 26%)`);
+            centerGrad.addColorStop(1, `hsl(${hue}, ${sat}%, 18%)`);
+            this.ctx.fillStyle = centerGrad;
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, centerR, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            const rayCount = 28;
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            this.ctx.lineWidth = Math.max(0.6, size * 0.005);
+            for (let i = 0; i < rayCount; i++) {
+                const a = (i / rayCount) * Math.PI * 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(Math.cos(a) * centerR * 0.25, Math.sin(a) * centerR * 0.25);
+                this.ctx.lineTo(Math.cos(a) * centerR, Math.sin(a) * centerR);
+                this.ctx.stroke();
+            }
             
             this.ctx.restore();
         });
@@ -744,7 +863,8 @@ class BloomVisual extends BaseVisual {
     
     resize(width, height) {
         super.resize(width, height);
-        this.initFlowers();
+        this.blooms = [];
+        this.initBlooms();
     }
 }
 
