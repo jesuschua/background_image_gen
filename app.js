@@ -159,7 +159,12 @@ class VisualScreensaver {
     }
 }
 
-// Base Visual Class
+// Base Visual Class — scale so fullscreen matches preview density (ref = 280×200)
+const REF_AREA = 280 * 200;
+function visualScale(width, height) {
+    return Math.sqrt((width * height) / REF_AREA);
+}
+
 class BaseVisual {
     constructor(canvas, ctx) {
         this.canvas = canvas;
@@ -167,11 +172,13 @@ class BaseVisual {
         this.width = canvas.width;
         this.height = canvas.height;
         this.time = 0;
+        this.scale = visualScale(canvas.width, canvas.height);
     }
     
     resize(width, height) {
         this.width = width;
         this.height = height;
+        this.scale = visualScale(width, height);
     }
     
     update() {
@@ -183,45 +190,103 @@ class BaseVisual {
     }
 }
 
-// Mosaic Visual
+// Mosaic Visual — low-poly triangulated mesh (no external deps), gradient colors, moving
 class MosaicVisual extends BaseVisual {
     constructor(canvas, ctx) {
         super(canvas, ctx);
-        this.tileSize = 40;
-        this.colors = [
-            [102, 126, 234],
-            [118, 75, 162],
-            [237, 100, 166],
-            [255, 154, 158],
-            [250, 208, 196]
-        ];
+        this.grid = [];
+        this.initMesh();
+    }
+    
+    initMesh() {
+        const s = this.scale;
+        const cellSize = (36 + Math.random() * 24) * s;
+        const jitter = 0.45;
+        this.grid = [];
+        const cols = Math.ceil(this.width / cellSize) + 2;
+        const rows = Math.ceil(this.height / cellSize) + 2;
+        
+        for (let row = 0; row < rows; row++) {
+            const r = [];
+            for (let col = 0; col < cols; col++) {
+                const jx = (Math.random() - 0.5) * cellSize * jitter;
+                const jy = (Math.random() - 0.5) * cellSize * jitter;
+                r.push({
+                    x0: col * cellSize + jx - cellSize * 0.5,
+                    y0: row * cellSize + jy - cellSize * 0.5,
+                    x: 0,
+                    y: 0,
+                    phase: Math.random() * Math.PI * 2,
+                    phaseY: Math.random() * Math.PI * 2,
+                    amp: (4 + Math.random() * 10) * s
+                });
+            }
+            this.grid.push(r);
+        }
+    }
+    
+    update() {
+        super.update();
+        const t = this.time * 0.2;
+        const wobbleScale = 1;
+        for (let row = 0; row < this.grid.length; row++) {
+            for (let col = 0; col < this.grid[row].length; col++) {
+                const p = this.grid[row][col];
+                p.x = p.x0 + p.amp * Math.sin(t + p.phase) * wobbleScale;
+                p.y = p.y0 + p.amp * Math.cos(t * 0.8 + p.phaseY) * wobbleScale;
+            }
+        }
     }
     
     render() {
-        this.ctx.fillStyle = '#000';
+        this.ctx.fillStyle = '#0a0a12';
         this.ctx.fillRect(0, 0, this.width, this.height);
         
-        const cols = Math.ceil(this.width / this.tileSize) + 1;
-        const rows = Math.ceil(this.height / this.tileSize) + 1;
+        const hueOffset = (this.time * 14) % 360;
         
-        for (let y = 0; y < rows; y++) {
-            for (let x = 0; x < cols; x++) {
-                const offsetX = (this.time * 20 + x * this.tileSize) % (this.tileSize * 2);
-                const offsetY = (this.time * 15 + y * this.tileSize) % (this.tileSize * 2);
+        for (let row = 0; row < this.grid.length - 1; row++) {
+            for (let col = 0; col < this.grid[row].length - 1; col++) {
+                const p00 = this.grid[row][col];
+                const p10 = this.grid[row][col + 1];
+                const p01 = this.grid[row + 1][col];
+                const p11 = this.grid[row + 1][col + 1];
                 
-                const colorIndex = Math.floor((x + y + this.time * 2) % this.colors.length);
-                const color = this.colors[colorIndex];
-                const brightness = 0.3 + 0.7 * (Math.sin(this.time + x + y) * 0.5 + 0.5);
+                const flip = (row + col) % 2 === 0;
+                const tri1 = flip ? [p00, p10, p11] : [p00, p10, p01];
+                const tri2 = flip ? [p00, p11, p01] : [p10, p11, p01];
                 
-                this.ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${brightness})`;
-                this.ctx.fillRect(
-                    x * this.tileSize - offsetX,
-                    y * this.tileSize - offsetY,
-                    this.tileSize,
-                    this.tileSize
-                );
+                this.drawTriangle(tri1, hueOffset, row * (this.grid[row].length - 1) + col);
+                this.drawTriangle(tri2, hueOffset, row * (this.grid[row].length - 1) + col + 1);
             }
         }
+    }
+    
+    drawTriangle(pts, hueOffset, seed) {
+        const [a, b, c] = pts;
+        const cx = (a.x + b.x + c.x) / 3;
+        const cy = (a.y + b.y + c.y) / 3;
+        
+        const nx = Math.max(0, Math.min(1, cx / this.width));
+        const ny = Math.max(0, Math.min(1, cy / this.height));
+        const hue = (hueOffset + (nx * 0.35 + ny * 0.65) * 300 + seed * 2) % 360;
+        const sat = 70 + (seed % 3) * 10;
+        const light = 40 + (Math.sin(this.time * 0.5 + seed * 0.2) * 0.5 + 0.5) * 25;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(a.x, a.y);
+        this.ctx.lineTo(b.x, b.y);
+        this.ctx.lineTo(c.x, c.y);
+        this.ctx.closePath();
+        this.ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+        this.ctx.fill();
+        this.ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light * 0.75}%, 0.4)`;
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
+    }
+    
+    resize(width, height) {
+        super.resize(width, height);
+        this.initMesh();
     }
 }
 
@@ -234,13 +299,15 @@ class SmokeVisual extends BaseVisual {
     }
     
     initParticles() {
-        for (let i = 0; i < 50; i++) {
+        const s = this.scale;
+        const count = Math.min(80, Math.max(50, Math.floor(50 * s)));
+        for (let i = 0; i < count; i++) {
             this.particles.push({
                 x: Math.random() * this.width,
-                y: this.height + Math.random() * 200,
+                y: this.height + Math.random() * 200 * s,
                 vx: (Math.random() - 0.5) * 0.5,
                 vy: -0.5 - Math.random() * 1.5,
-                size: 20 + Math.random() * 80,
+                size: (20 + Math.random() * 80) * s,
                 opacity: 0.1 + Math.random() * 0.3,
                 life: Math.random()
             });
@@ -249,6 +316,7 @@ class SmokeVisual extends BaseVisual {
     
     update() {
         super.update();
+        const s = this.scale;
         this.particles.forEach(p => {
             p.x += p.vx + Math.sin(this.time + p.life) * 0.3;
             p.y += p.vy;
@@ -257,9 +325,9 @@ class SmokeVisual extends BaseVisual {
             
             if (p.y < -p.size || p.opacity < 0.01) {
                 p.x = Math.random() * this.width;
-                p.y = this.height + Math.random() * 100;
+                p.y = this.height + Math.random() * 100 * s;
                 p.opacity = 0.2 + Math.random() * 0.3;
-                p.size = 20 + Math.random() * 80;
+                p.size = (20 + Math.random() * 80) * s;
             }
         });
     }
@@ -296,11 +364,13 @@ class LightShadeVisual extends BaseVisual {
     }
     
     initLights() {
-        for (let i = 0; i < 5; i++) {
+        const s = this.scale;
+        const count = Math.min(12, Math.max(5, Math.floor(5 * s)));
+        for (let i = 0; i < count; i++) {
             this.lights.push({
                 x: Math.random() * this.width,
                 y: Math.random() * this.height,
-                radius: 100 + Math.random() * 200,
+                radius: (100 + Math.random() * 200) * s,
                 speedX: (Math.random() - 0.5) * 2,
                 speedY: (Math.random() - 0.5) * 2,
                 hue: Math.random() * 360
@@ -357,14 +427,16 @@ class LanternsVisual extends BaseVisual {
     }
     
     initLanterns() {
-        for (let i = 0; i < 15; i++) {
+        const s = this.scale;
+        const count = Math.min(35, Math.max(15, Math.floor(15 * s)));
+        for (let i = 0; i < count; i++) {
             this.lanterns.push({
                 x: Math.random() * this.width,
                 y: Math.random() * this.height,
-                radius: 30 + Math.random() * 40,
+                radius: (30 + Math.random() * 40) * s,
                 swing: Math.random() * Math.PI * 2,
                 swingSpeed: 0.02 + Math.random() * 0.03,
-                floatSpeed: 0.3 + Math.random() * 0.5,
+                floatSpeed: (0.3 + Math.random() * 0.5) * s,
                 hue: 30 + Math.random() * 60,
                 brightness: 0.7 + Math.random() * 0.3
             });
@@ -373,9 +445,10 @@ class LanternsVisual extends BaseVisual {
     
     update() {
         super.update();
+        const s = this.scale;
         this.lanterns.forEach(lantern => {
             lantern.swing += lantern.swingSpeed;
-            lantern.x += Math.sin(lantern.swing) * 2;
+            lantern.x += Math.sin(lantern.swing) * 2 * s;
             lantern.y -= lantern.floatSpeed;
             
             if (lantern.y < -lantern.radius * 2) {
@@ -431,10 +504,12 @@ class SunsetVisual extends BaseVisual {
     }
     
     render() {
-        // Sky gradient
+        const s = this.scale;
         const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.height);
-        const sunY = this.height * 0.3 + Math.sin(this.time * 0.1) * 50;
+        const sunY = this.height * 0.3 + Math.sin(this.time * 0.1) * 50 * s;
         const sunX = this.width * 0.5;
+        const sunGlowR = 150 * s;
+        const sunDiskR = 80 * s;
         
         skyGradient.addColorStop(0, '#1a1a2e');
         skyGradient.addColorStop(0.3, '#16213e');
@@ -445,34 +520,32 @@ class SunsetVisual extends BaseVisual {
         this.ctx.fillStyle = skyGradient;
         this.ctx.fillRect(0, 0, this.width, this.height);
         
-        // Sun
-        const sunGradient = this.ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 150);
+        const sunGradient = this.ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunGlowR);
         sunGradient.addColorStop(0, '#fff8dc');
         sunGradient.addColorStop(0.5, '#ffd700');
         sunGradient.addColorStop(1, 'transparent');
         
         this.ctx.fillStyle = sunGradient;
         this.ctx.beginPath();
-        this.ctx.arc(sunX, sunY, 150, 0, Math.PI * 2);
+        this.ctx.arc(sunX, sunY, sunGlowR, 0, Math.PI * 2);
         this.ctx.fill();
         
-        // Sun disk
         this.ctx.fillStyle = '#ffd700';
         this.ctx.beginPath();
-        this.ctx.arc(sunX, sunY, 80, 0, Math.PI * 2);
+        this.ctx.arc(sunX, sunY, sunDiskR, 0, Math.PI * 2);
         this.ctx.fill();
         
-        // Clouds
-        for (let i = 0; i < 5; i++) {
-            const cloudX = (this.time * 10 + i * 300) % (this.width + 200) - 100;
-            const cloudY = this.height * 0.4 + i * 50;
+        const cloudCount = Math.min(9, Math.max(5, Math.floor(5 * s)));
+        for (let i = 0; i < cloudCount; i++) {
+            const cloudX = (this.time * 10 * s + i * 300 * s) % (this.width + 200 * s) - 100 * s;
+            const cloudY = this.height * 0.4 + i * 50 * s;
             const cloudOpacity = 0.3 + Math.sin(this.time + i) * 0.1;
-            
+            const r1 = 40 * s, r2 = 50 * s, r3 = 40 * s;
             this.ctx.fillStyle = `rgba(255, 200, 150, ${cloudOpacity})`;
             this.ctx.beginPath();
-            this.ctx.arc(cloudX, cloudY, 40, 0, Math.PI * 2);
-            this.ctx.arc(cloudX + 50, cloudY, 50, 0, Math.PI * 2);
-            this.ctx.arc(cloudX + 100, cloudY, 40, 0, Math.PI * 2);
+            this.ctx.arc(cloudX, cloudY, r1, 0, Math.PI * 2);
+            this.ctx.arc(cloudX + 50 * s, cloudY, r2, 0, Math.PI * 2);
+            this.ctx.arc(cloudX + 100 * s, cloudY, r3, 0, Math.PI * 2);
             this.ctx.fill();
         }
     }
@@ -487,12 +560,14 @@ class BloomVisual extends BaseVisual {
     }
     
     initFlowers() {
-        for (let i = 0; i < 8; i++) {
+        const s = this.scale;
+        const count = Math.min(22, Math.max(8, Math.floor(8 * s)));
+        for (let i = 0; i < count; i++) {
             this.flowers.push({
                 x: Math.random() * this.width,
                 y: Math.random() * this.height,
                 petals: 5 + Math.floor(Math.random() * 4),
-                size: 40 + Math.random() * 60,
+                size: (40 + Math.random() * 60) * s,
                 rotation: Math.random() * Math.PI * 2,
                 rotationSpeed: (Math.random() - 0.5) * 0.02,
                 hue: Math.random() * 360,
@@ -574,7 +649,6 @@ class UrbanityVisual extends BaseVisual {
                 color: `hsl(200, 30%, ${10 + Math.random() * 20}%)`
             });
             
-            // Add windows
             const windows = Math.floor(height / 30);
             for (let i = 0; i < windows; i++) {
                 if (Math.random() > 0.3) {
@@ -633,19 +707,12 @@ class UrbanityVisual extends BaseVisual {
             );
         });
         
-        // Window lights
         this.lights.forEach(light => {
             if (light.on) {
                 const brightness = 0.5 + Math.sin(light.flicker) * 0.3;
                 this.ctx.fillStyle = `rgba(255, 220, 100, ${brightness})`;
-                this.ctx.fillRect(
-                    light.x - 3,
-                    light.y - 3,
-                    6,
-                    6
-                );
+                this.ctx.fillRect(light.x - 3, light.y - 3, 6, 6);
                 
-                // Glow
                 const glowGradient = this.ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, 10);
                 glowGradient.addColorStop(0, `rgba(255, 220, 100, ${brightness * 0.3})`);
                 glowGradient.addColorStop(1, 'transparent');
