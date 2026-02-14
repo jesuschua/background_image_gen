@@ -418,29 +418,52 @@ class LightShadeVisual extends BaseVisual {
     }
 }
 
-// Lanterns Visual
+// Lanterns Visual — Chinese lanterns; depth-sorted with branches and beams so they pass in/out
 class LanternsVisual extends BaseVisual {
     constructor(canvas, ctx) {
         super(canvas, ctx);
         this.lanterns = [];
+        this.obstructions = [];
         this.initLanterns();
+        this.initObstructions();
     }
     
     initLanterns() {
         const s = this.scale;
-        const count = Math.min(35, Math.max(15, Math.floor(15 * s)));
+        const count = Math.min(14, Math.max(5, Math.floor(6 * s)));
+        const sizeScale = 0.58;
         for (let i = 0; i < count; i++) {
             this.lanterns.push({
                 x: Math.random() * this.width,
                 y: Math.random() * this.height,
-                radius: (30 + Math.random() * 40) * s,
+                radius: (28 + Math.random() * 38) * s * sizeScale,
                 swing: Math.random() * Math.PI * 2,
-                swingSpeed: 0.02 + Math.random() * 0.03,
-                floatSpeed: (0.3 + Math.random() * 0.5) * s,
-                hue: 30 + Math.random() * 60,
-                brightness: 0.7 + Math.random() * 0.3
+                swingSpeed: 0.00015 + Math.random() * 0.00035,
+                floatSpeed: (0.004 + Math.random() * 0.009) * s,
+                swayAmount: 0.04 + Math.random() * 0.08,
+                hue: 0 + Math.random() * 14,
+                sat: 88 + Math.random() * 12,
+                ribOffset: Math.random() * Math.PI
             });
         }
+    }
+    
+    initObstructions() {
+        const w = this.width;
+        const h = this.height;
+        const s = this.scale;
+        this.obstructions = [];
+        const branchColor = 'rgba(28, 22, 18, 0.92)';
+        
+        // Branches — curved strokes at various depths (lanterns will pass in front/behind)
+        const branches = [
+            { depth: 0.22, path: () => { this.ctx.moveTo(-w * 0.08, h * 0.2); this.ctx.quadraticCurveTo(w * 0.15, h * 0.1, w * 0.35, h * 0.5); this.ctx.quadraticCurveTo(w * 0.28, h * 0.75, w * 0.1, h * 1.05); } },
+            { depth: 0.48, path: () => { this.ctx.moveTo(w * 1.02, h * 0.35); this.ctx.quadraticCurveTo(w * 0.82, h * 0.5, w * 0.7, h * 0.85); this.ctx.quadraticCurveTo(w * 0.65, h * 0.5, w * 0.5, h * 0.1); } },
+            { depth: 0.58, path: () => { this.ctx.moveTo(-w * 0.05, h * 0.65); this.ctx.quadraticCurveTo(w * 0.4, h * 0.5, w * 0.72, h * 0.35); this.ctx.quadraticCurveTo(w * 0.6, h * 0.15, w * 0.25, -h * 0.05); } },
+            { depth: 0.72, path: () => { this.ctx.moveTo(w * 0.88, h * 0.7); this.ctx.quadraticCurveTo(w * 0.5, h * 0.55, w * 0.12, h * 0.72); this.ctx.lineTo(-w * 0.03, h * 0.5); } },
+            { depth: 0.35, path: () => { this.ctx.moveTo(w * 0.6, -h * 0.02); this.ctx.quadraticCurveTo(w * 0.75, h * 0.4, w * 0.68, h * 0.88); } },
+        ];
+        branches.forEach(b => this.obstructions.push({ type: 'branch', depth: b.depth, draw: b.path, color: branchColor, width: 4 + Math.random() * 5 }));
     }
     
     update() {
@@ -448,52 +471,149 @@ class LanternsVisual extends BaseVisual {
         const s = this.scale;
         this.lanterns.forEach(lantern => {
             lantern.swing += lantern.swingSpeed;
-            lantern.x += Math.sin(lantern.swing) * 2 * s;
+            lantern.x += Math.sin(lantern.swing) * lantern.swayAmount * s;
             lantern.y -= lantern.floatSpeed;
-            
-            if (lantern.y < -lantern.radius * 2) {
-                lantern.y = this.height + lantern.radius;
+            if (lantern.y < -lantern.radius * 3) {
+                lantern.y = this.height + lantern.radius * 2;
                 lantern.x = Math.random() * this.width;
             }
         });
     }
     
+    lanternDepth(lantern) {
+        const y = Math.max(-lantern.radius * 2, Math.min(this.height + lantern.radius * 2, lantern.y));
+        return 0.12 + 0.82 * (1 - (y / (this.height + lantern.radius * 4)));
+    }
+    
+    drawObstruction(ob) {
+        if (ob.type === 'branch') {
+            this.ctx.strokeStyle = ob.color;
+            this.ctx.lineWidth = (ob.width || 5) * this.scale;
+            this.ctx.lineCap = 'round';
+            this.ctx.lineJoin = 'round';
+            this.ctx.beginPath();
+            ob.draw.call(this);
+            this.ctx.stroke();
+        }
+    }
+    
+    drawLanternLightSpill(lantern) {
+        const r = lantern.radius;
+        const h = lantern.hue;
+        const sat = lantern.sat;
+        const spillRadius = r * 3.2;
+        const spill = this.ctx.createRadialGradient(
+            lantern.x, lantern.y, 0,
+            lantern.x, lantern.y, spillRadius
+        );
+        spill.addColorStop(0, `hsla(${h}, ${sat}%, 65%, 0.14)`);
+        spill.addColorStop(0.4, `hsla(${h}, ${sat}%, 55%, 0.06)`);
+        spill.addColorStop(0.7, `hsla(${h}, ${sat}%, 45%, 0.02)`);
+        spill.addColorStop(1, 'transparent');
+        this.ctx.fillStyle = spill;
+        this.ctx.beginPath();
+        this.ctx.arc(lantern.x, lantern.y, spillRadius, 0, Math.PI * 2);
+        this.ctx.fill();
+    }
+    
+    drawOneLantern(lantern) {
+        const tilt = Math.sin(lantern.swing) * 0.05;
+        const r = lantern.radius;
+        const h = lantern.hue;
+        const sat = lantern.sat;
+        const hotY = -r * 0.15;
+        
+        this.ctx.save();
+        this.ctx.translate(lantern.x, lantern.y);
+        this.ctx.rotate(tilt);
+        
+        const halo = this.ctx.createRadialGradient(0, 0, r * 0.5, 0, 0, r * 1.8);
+        halo.addColorStop(0, `hsla(${h}, ${sat}%, 55%, 0.12)`);
+        halo.addColorStop(0.6, `hsla(${h}, ${sat}%, 45%, 0.04)`);
+        halo.addColorStop(1, 'transparent');
+        this.ctx.fillStyle = halo;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, r * 1.8, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        const body = this.ctx.createRadialGradient(0, hotY, 0, 0, 0, r);
+        body.addColorStop(0, 'hsla(35, 60%, 92%, 0.98)');
+        body.addColorStop(0.08, 'hsla(12, 90%, 78%, 0.97)');
+        body.addColorStop(0.2, `hsla(${h}, ${sat}%, 58%, 0.98)`);
+        body.addColorStop(0.5, `hsla(${h}, ${sat}%, 52%, 0.97)`);
+        body.addColorStop(0.85, `hsla(${h}, ${sat}%, 48%, 0.96)`);
+        body.addColorStop(1, `hsla(${h}, ${sat}%, 38%, 0.92)`);
+        this.ctx.fillStyle = body;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, r, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        const ribCount = 10;
+        this.ctx.strokeStyle = `hsla(${h}, ${sat}%, 28%, 0.22)`;
+        this.ctx.lineWidth = Math.max(0.5, r * 0.012);
+        for (let i = 0; i < ribCount; i++) {
+            const a = (i / ribCount) * Math.PI * 2 + lantern.ribOffset;
+            this.ctx.beginPath();
+            for (let t = -0.88; t <= 0.88; t += 0.05) {
+                const y = t * r;
+                const x = Math.sqrt(Math.max(0, 1 - (y / r) * (y / r))) * r * Math.cos(a);
+                if (t === -0.88) this.ctx.moveTo(x, y);
+                else this.ctx.lineTo(x, y);
+            }
+            this.ctx.stroke();
+        }
+        
+        this.ctx.fillStyle = 'hsla(0, 20%, 12%, 0.95)';
+        this.ctx.beginPath();
+        this.ctx.ellipse(0, -r - r * 0.04, r * 0.46, r * 0.1, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        this.ctx.strokeStyle = 'hsla(0, 18%, 16%, 0.9)';
+        this.ctx.lineWidth = Math.max(0.7, r * 0.03);
+        this.ctx.beginPath();
+        this.ctx.ellipse(0, r, r * 0.88, r * 0.05, 0, 0, Math.PI * 2);
+        this.ctx.stroke();
+        
+        const tasselY = r + r * 0.1;
+        this.ctx.strokeStyle = 'hsla(42, 68%, 50%, 0.88)';
+        this.ctx.lineWidth = Math.max(0.7, r * 0.03);
+        this.ctx.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+            const angle = (i - 1) * 0.2 + tilt * 0.3;
+            const len = r * (0.4 + (i % 2) * 0.15);
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, tasselY);
+            this.ctx.lineTo(Math.sin(angle) * len, tasselY + len);
+            this.ctx.stroke();
+        }
+        this.ctx.lineCap = 'butt';
+        this.ctx.restore();
+    }
+    
     render() {
-        this.ctx.fillStyle = '#0a0a1a';
+        this.ctx.fillStyle = '#080810';
         this.ctx.fillRect(0, 0, this.width, this.height);
         
-        this.lanterns.forEach(lantern => {
-            // Glow
-            const glowGradient = this.ctx.createRadialGradient(
-                lantern.x, lantern.y, 0,
-                lantern.x, lantern.y, lantern.radius * 3
-            );
-            glowGradient.addColorStop(0, `hsla(${lantern.hue}, 100%, ${lantern.brightness * 100}%, 0.6)`);
-            glowGradient.addColorStop(1, 'transparent');
-            
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(lantern.x, lantern.y, lantern.radius * 3, 0, Math.PI * 2);
-            this.ctx.fill();
-            
-            // Lantern body
-            const bodyGradient = this.ctx.createRadialGradient(
-                lantern.x, lantern.y - lantern.radius * 0.3, 0,
-                lantern.x, lantern.y, lantern.radius
-            );
-            bodyGradient.addColorStop(0, `hsla(${lantern.hue}, 100%, 70%, 1)`);
-            bodyGradient.addColorStop(1, `hsla(${lantern.hue}, 80%, 40%, 0.8)`);
-            
-            this.ctx.fillStyle = bodyGradient;
-            this.ctx.beginPath();
-            this.ctx.ellipse(lantern.x, lantern.y, lantern.radius, lantern.radius * 1.2, 0, 0, Math.PI * 2);
-            this.ctx.fill();
+        const drawables = [];
+        this.obstructions.forEach(ob => drawables.push({ depth: ob.depth, ob }));
+        this.lanterns.forEach(lantern => drawables.push({ depth: this.lanternDepth(lantern), lantern }));
+        drawables.sort((a, b) => a.depth - b.depth);
+        
+        drawables.forEach(d => {
+            if (d.ob) this.drawObstruction(d.ob);
+            else {
+                this.drawLanternLightSpill(d.lantern);
+                this.drawOneLantern(d.lantern);
+            }
         });
     }
     
     resize(width, height) {
         super.resize(width, height);
+        this.lanterns = [];
+        this.obstructions = [];
         this.initLanterns();
+        this.initObstructions();
     }
 }
 
